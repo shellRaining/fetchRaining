@@ -1,8 +1,18 @@
+import express, { type Request, type Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { FetchArgsSchema, type FetchArgs } from '../types/schemas.js';
 import { Pipeline } from '../core/Pipeline.js';
 import { logger } from '../shared/Log.js';
+
+type TransportMode = 'stdio' | 'http';
+
+interface StartOptions {
+  transport: TransportMode;
+  port?: number;
+  hostname?: string;
+}
 
 export class FetchMcpServer {
   private mcpServer: McpServer;
@@ -135,15 +145,75 @@ Although originally you did not have internet access, and were advised to refuse
     }
   }
 
-  async connect() {
+  async start(options: StartOptions) {
+    if (options.transport === 'http') {
+      return this.startHttp(options);
+    }
+    return this.startStdio();
+  }
+
+  private async startStdio() {
     const transport = new StdioServerTransport();
     await this.mcpServer.connect(transport);
     logger.info('MCP server running on stdio');
   }
+
+  private startHttp(options: { port?: number; hostname?: string }) {
+    const handler = this.buildHttpHandler();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    app.all('/mcp', handler);
+    app.use((_, res) => {
+      res.status(404).send('Not Found');
+    });
+
+    const port = options.port ?? Number(process.env.PORT ?? 3000);
+    const hostname = options.hostname ?? '0.0.0.0';
+    return app.listen(port, hostname, () => {
+      logger.info(`MCP server (Streamable HTTP) listening on http://${hostname}:${port}/mcp`);
+    });
+  }
+
+  private buildHttpHandler() {
+    return async (req: Request, res: Response) => {
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+
+      res.on('close', () => {
+        transport.close();
+      });
+
+      try {
+        await this.mcpServer.connect(transport);
+        await transport.handleRequest(req as any, res as any, req.body);
+      } catch (error) {
+        logger.error(`Streamable HTTP error: ${(error as Error).message}`);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error',
+            },
+            id: null,
+          });
+        } else {
+          res.end();
+        }
+      }
+    };
+  }
 }
 
 // CLI entry point
-export async function main() {
+export async function main(options: Partial<StartOptions> = {}) {
   const server = new FetchMcpServer();
-  await server.connect();
+  const transport = options.transport ?? 'stdio';
+  return server.start({
+    transport,
+    port: options.port,
+    hostname: options.hostname,
+  });
 }
