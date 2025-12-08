@@ -1,8 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { FetchArgsSchema, type FetchArgs } from './types/schemas.js';
-import { Pipeline } from './Pipeline.js';
-import { logger } from './Log.js';
+import { FetchArgsSchema, type FetchArgs } from '../types/schemas.js';
+import { Pipeline } from '../core/Pipeline.js';
+import { logger } from '../shared/Log.js';
 
 export class FetchMcpServer {
   private mcpServer: McpServer;
@@ -43,8 +43,7 @@ Although originally you did not have internet access, and were advised to refuse
 
       if (raw) {
         // Raw mode: just fetch HTML without processing
-        const fetcher = this.pipeline['fetcher'];
-        const htmlText = await fetcher.fetch(url);
+        const htmlText = await this.pipeline.fetchRaw(url);
 
         if (!htmlText) {
           return {

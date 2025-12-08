@@ -1,4 +1,4 @@
-import { logger } from './Log.ts';
+import { logger } from '../shared/Log';
 import { Readability } from '@mozilla/readability';
 
 interface Extracter {

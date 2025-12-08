@@ -1,4 +1,4 @@
-import { logger } from './Log';
+import { logger } from '../shared/Log';
 
 const STRUCTURAL_CONTAINERS = ['section', 'article', 'main', 'aside'];
 

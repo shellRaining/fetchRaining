@@ -1,6 +1,6 @@
 import TurndownService from 'turndown';
 import turndownPluginGfm from 'turndown-plugin-gfm';
-import { logger } from './Log';
+import { logger } from '../shared/Log';
 
 interface Transformer {
   transform: (data: string) => string | undefined;

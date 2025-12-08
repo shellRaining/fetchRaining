@@ -3,7 +3,7 @@ import { DocumentBuilder } from './Builder';
 import { ArticleExtracter } from './Extracter';
 import { FragmentExtractor } from './FragmentExtractor';
 import { MarkdownTransformer } from './Transformer';
-import { logger } from './Log';
+import { logger } from '../shared/Log';
 
 export class Pipeline {
   private fetcher: SimpleFetcher;
@@ -18,6 +18,10 @@ export class Pipeline {
     this.extracter = new ArticleExtracter();
     this.fragmentExtracter = new FragmentExtractor();
     this.transformer = new MarkdownTransformer();
+  }
+
+  async fetchRaw(url: string, options?: RequestInit) {
+    return this.fetcher.fetch(url, options);
   }
 
   async process(url: string) {

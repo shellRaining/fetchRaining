@@ -1,4 +1,4 @@
-import { logger } from './Log';
+import { logger } from '../shared/Log';
 import { JSDOM } from 'jsdom';
 
 interface Builder {

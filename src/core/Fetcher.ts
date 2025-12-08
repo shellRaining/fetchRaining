@@ -1,4 +1,4 @@
-import { logger } from './Log';
+import { logger } from '../shared/Log';
 
 interface Fetcher {
   fetch: (url: string, options?: RequestInit) => Promise<string | undefined>;

@@ -4,7 +4,7 @@
   "scripts": {
     "fmt": "oxfmt",
     "lint": "oxlint",
-    "start": "bun run src/cli.ts"
+    "start": "bun run src/adapters/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
