@@ -12,8 +12,8 @@ export class Pipeline {
   private fragmentExtracter: FragmentExtractor;
   private transformer: MarkdownTransformer;
 
-  constructor() {
-    this.fetcher = new SimpleFetcher();
+  constructor(options?: { userAgent?: string }) {
+    this.fetcher = new SimpleFetcher(options?.userAgent);
     this.builder = new DocumentBuilder();
     this.extracter = new ArticleExtracter();
     this.fragmentExtracter = new FragmentExtractor();

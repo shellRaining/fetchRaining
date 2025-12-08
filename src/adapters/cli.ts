@@ -29,6 +29,7 @@ program
   .option('-p, --port <port>', 'Port for HTTP transport', parsePort)
   .option('-H, --host <host>', 'Hostname for HTTP transport')
   .option('--hostname <hostname>', 'Hostname for HTTP transport')
+  .option('-u, --user-agent <userAgent>', 'Custom User-Agent for outbound fetches')
   .allowExcessArguments(false);
 
 const parsed = program.parse(process.argv);
@@ -38,18 +39,20 @@ const options = parsed.opts<{
   port?: number;
   host?: string;
   hostname?: string;
+  userAgent?: string;
 }>();
 
 const transport = options.transport ?? (parsed.args[0] as Transport);
 const port = options.port;
 const hostname = options.host ?? options.hostname;
+const userAgent = options.userAgent;
 
 // Only allow stdout logging in HTTP mode to avoid corrupting stdio JSON-RPC output.
 process.env.LOG_TO_STDOUT = transport === 'http' ? '1' : '0';
 
 const start = async () => {
   const { main } = await import('./server.js');
-  await main({ transport, port, hostname });
+  await main({ transport, port, hostname, userAgent });
 };
 
 start().catch((error) => {

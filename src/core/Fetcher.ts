@@ -5,10 +5,18 @@ interface Fetcher {
 }
 
 export class SimpleFetcher implements Fetcher {
+  constructor(private readonly userAgent?: string) {}
+
   async fetch(url: string, options?: RequestInit) {
     try {
+      const headers = new Headers(options?.headers ?? {});
+      if (this.userAgent && !headers.has('user-agent')) {
+        headers.set('user-agent', this.userAgent);
+      }
+
       const response = await fetch(url, {
         ...options,
+        headers,
         signal: AbortSignal.timeout(30000), // 30 second timeout
       });
 

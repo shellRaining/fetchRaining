@@ -12,18 +12,19 @@ interface StartOptions {
   transport: TransportMode;
   port?: number;
   hostname?: string;
+  userAgent?: string;
 }
 
 export class FetchMcpServer {
   private mcpServer: McpServer;
   private pipeline: Pipeline;
 
-  constructor() {
+  constructor(userAgent?: string) {
     this.mcpServer = new McpServer({
       name: 'fetchraining',
       version: '1.0.0',
     });
-    this.pipeline = new Pipeline();
+    this.pipeline = new Pipeline({ userAgent });
 
     this.registerTools();
   }
@@ -209,11 +210,12 @@ Although originally you did not have internet access, and were advised to refuse
 
 // CLI entry point
 export async function main(options: Partial<StartOptions> = {}) {
-  const server = new FetchMcpServer();
+  const server = new FetchMcpServer(options.userAgent);
   const transport = options.transport ?? 'stdio';
   return server.start({
     transport,
     port: options.port,
     hostname: options.hostname,
+    userAgent: options.userAgent,
   });
 }
