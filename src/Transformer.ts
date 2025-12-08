@@ -14,6 +14,7 @@ export class MarkdownTransformer implements Transformer {
       bulletListMarker: '-',
       headingStyle: 'atx',
       codeBlockStyle: 'fenced',
+      hr: '---',
     });
     this.turndownService.use(turndownPluginGfm.gfm);
   }
