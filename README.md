@@ -24,4 +24,10 @@ Override outbound User-Agent (applies to both transports):
 bun run src/adapters/cli.ts --user-agent="MyCrawler/1.0"
 ```
 
+Route outbound traffic through a proxy:
+
+```bash
+bun run src/adapters/cli.ts http --port=3000 --proxy-url="http://127.0.0.1:8080"
+```
+
 This project was created using `bun init` in bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

@@ -4,6 +4,7 @@ import { ArticleExtracter } from './Extracter';
 import { FragmentExtractor } from './FragmentExtractor';
 import { MarkdownTransformer } from './Transformer';
 import { logger } from '../shared/Log';
+import type { Dispatcher } from 'undici';
 
 export class Pipeline {
   private fetcher: SimpleFetcher;
@@ -12,8 +13,8 @@ export class Pipeline {
   private fragmentExtracter: FragmentExtractor;
   private transformer: MarkdownTransformer;
 
-  constructor(options?: { userAgent?: string }) {
-    this.fetcher = new SimpleFetcher(options?.userAgent);
+  constructor(options?: { userAgent?: string; dispatcher?: Dispatcher }) {
+    this.fetcher = new SimpleFetcher(options?.userAgent, options?.dispatcher);
     this.builder = new DocumentBuilder();
     this.extracter = new ArticleExtracter();
     this.fragmentExtracter = new FragmentExtractor();

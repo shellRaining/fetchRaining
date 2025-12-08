@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ProxyAgent, type Dispatcher } from 'undici';
 import { FetchArgsSchema, type FetchArgs } from '../types/schemas.js';
 import { Pipeline } from '../core/Pipeline.js';
 import { logger } from '../shared/Log.js';
@@ -13,18 +14,20 @@ interface StartOptions {
   port?: number;
   hostname?: string;
   userAgent?: string;
+  proxyUrl?: string;
 }
 
 export class FetchMcpServer {
   private mcpServer: McpServer;
   private pipeline: Pipeline;
 
-  constructor(userAgent?: string) {
+  constructor(config?: { userAgent?: string; proxyUrl?: string }) {
     this.mcpServer = new McpServer({
       name: 'fetchraining',
       version: '1.0.0',
     });
-    this.pipeline = new Pipeline({ userAgent });
+    const dispatcher = this.createProxyDispatcher(config?.proxyUrl);
+    this.pipeline = new Pipeline({ userAgent: config?.userAgent, dispatcher });
 
     this.registerTools();
   }
@@ -206,16 +209,30 @@ Although originally you did not have internet access, and were advised to refuse
       }
     };
   }
+
+  private createProxyDispatcher(proxyUrl?: string): Dispatcher | undefined {
+    if (!proxyUrl) {
+      return undefined;
+    }
+
+    try {
+      return new ProxyAgent(proxyUrl);
+    } catch (error) {
+      logger.error(`Failed to configure proxy (${proxyUrl}): ${(error as Error).message}`);
+      return undefined;
+    }
+  }
 }
 
 // CLI entry point
 export async function main(options: Partial<StartOptions> = {}) {
-  const server = new FetchMcpServer(options.userAgent);
+  const server = new FetchMcpServer({ userAgent: options.userAgent, proxyUrl: options.proxyUrl });
   const transport = options.transport ?? 'stdio';
   return server.start({
     transport,
     port: options.port,
     hostname: options.hostname,
     userAgent: options.userAgent,
+    proxyUrl: options.proxyUrl,
   });
 }

@@ -30,6 +30,7 @@ program
   .option('-H, --host <host>', 'Hostname for HTTP transport')
   .option('--hostname <hostname>', 'Hostname for HTTP transport')
   .option('-u, --user-agent <userAgent>', 'Custom User-Agent for outbound fetches')
+  .option('--proxy-url <proxyUrl>', 'HTTP/HTTPS proxy URL for outbound fetches')
   .allowExcessArguments(false);
 
 const parsed = program.parse(process.argv);
@@ -40,19 +41,21 @@ const options = parsed.opts<{
   host?: string;
   hostname?: string;
   userAgent?: string;
+  proxyUrl?: string;
 }>();
 
 const transport = options.transport ?? (parsed.args[0] as Transport);
 const port = options.port;
 const hostname = options.host ?? options.hostname;
 const userAgent = options.userAgent;
+const proxyUrl = options.proxyUrl;
 
 // Only allow stdout logging in HTTP mode to avoid corrupting stdio JSON-RPC output.
 process.env.LOG_TO_STDOUT = transport === 'http' ? '1' : '0';
 
 const start = async () => {
   const { main } = await import('./server.js');
-  await main({ transport, port, hostname, userAgent });
+  await main({ transport, port, hostname, userAgent, proxyUrl });
 };
 
 start().catch((error) => {
