@@ -1,4 +1,5 @@
 import pino from 'pino';
+import pinoPretty from 'pino-pretty';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -17,24 +18,23 @@ try {
   mkdirSync(logDir, { recursive: true });
 }
 
-const targets: pino.TransportTargetOptions[] = [
+const logToStdout = (process.env.LOG_TO_STDOUT || '').toLowerCase() === 'true' || process.env.LOG_TO_STDOUT === '1';
+
+const streams: pino.StreamEntry[] = [
   {
-    target: 'pino/file',
-    options: { destination: join(logDir, 'app.jsonl') },
+    stream: pino.destination({
+      dest: join(logDir, 'app.jsonl'),
+      sync: false,
+    }),
   },
 ];
 
-const logToStdout = (process.env.LOG_TO_STDOUT || '').toLowerCase() === 'true' || process.env.LOG_TO_STDOUT === '1';
-
 if (logToStdout) {
-  targets.unshift({
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-    },
+  // Use programmatic pino-pretty instead of transport resolution so it works when compiled into a binary.
+  const prettyStream = pinoPretty({
+    colorize: true,
   });
+  streams.unshift({ stream: prettyStream });
 }
 
-const transport = pino.transport({ targets });
-
-export const logger = pino(transport);
+export const logger = pino({}, pino.multistream(streams));
