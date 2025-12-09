@@ -1,0 +1,8 @@
+node_modules
+logs
+.git
+.vscode
+*.log
+Dockerfile~
+README.md~
+TODO.md~

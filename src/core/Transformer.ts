@@ -1,5 +1,5 @@
 import TurndownService from 'turndown';
-import turndownPluginGfm from 'turndown-plugin-gfm';
+import { gfm } from 'turndown-plugin-gfm';
 import { logger } from '../shared/Log';
 
 interface Transformer {
@@ -16,7 +16,7 @@ export class MarkdownTransformer implements Transformer {
       codeBlockStyle: 'fenced',
       hr: '---',
     });
-    this.turndownService.use(turndownPluginGfm.gfm);
+    this.turndownService.use(gfm);
   }
 
   transform(data: string) {
