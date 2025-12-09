@@ -5,14 +5,14 @@ COPY package.json bun.lock ./
 RUN bun install --ci
 
 COPY . .
-RUN bun build src/adapters/cli.ts --target bun --minify --outdir dist
+# Compile to a self-contained binary for Linux arm64
+RUN bun build src/adapters/cli.ts --compile --minify --target=bun-linux-arm64 --outfile fetchraining
 
-FROM oven/bun:1.3.4-slim
+FROM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
-ENV NODE_ENV=production
 
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/fetchraining /app/fetchraining
 
 EXPOSE 3000
 
-CMD ["bun", "run", "dist/cli.js", "http", "--host", "0.0.0.0", "--port", "3000"]
+ENTRYPOINT ["/app/fetchraining", "http", "--host", "0.0.0.0", "--port", "3000"]
