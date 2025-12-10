@@ -26,17 +26,19 @@ export class Pipeline {
   }
 
   async process(url: string) {
+    const startTime = Date.now();
+
     try {
       const htmlText = await this.fetcher.fetch(url);
 
       if (!htmlText) {
-        logger.warn(`No data fetched from URL: ${url}`);
+        logger.warn({ url, phase: 'fetch' }, 'No data fetched from URL');
         return null;
       }
 
       const document = this.builder.extract(htmlText);
       if (!document) {
-        logger.warn(`Failed to build document from fetched data.`);
+        logger.warn({ url, phase: 'build' }, 'Failed to build document');
         return null;
       }
 
@@ -50,19 +52,37 @@ export class Pipeline {
 
       const article = this.extracter.extract(document);
       if (!article || !article.content) {
-        logger.warn(`No article content extracted from document.`);
+        logger.warn({ url, phase: 'extract' }, 'No article content extracted');
         return null;
       }
 
       const markdown = this.transformer.transform(article.content);
       if (!markdown) {
-        logger.warn(`Failed to transform article content to markdown.`);
+        logger.warn({ url, phase: 'transform' }, 'Failed to transform to markdown');
         return null;
       }
 
+      logger.debug(
+        {
+          url,
+          markdownLength: markdown.length,
+          duration: Date.now() - startTime,
+        },
+        'Pipeline processing completed'
+      );
+
       return markdown;
     } catch (error) {
-      logger.error(`Pipeline processing error: ${(error as Error).message}`);
+      const err = error as Error;
+      logger.error(
+        {
+          url,
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - startTime,
+        },
+        'Pipeline processing error'
+      );
       throw error;
     }
   }

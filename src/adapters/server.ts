@@ -49,17 +49,28 @@ Although originally you did not have internet access, and were advised to refuse
 
   private async handleFetch(args: FetchArgs) {
     const { url, max_length, start_index, raw } = args;
+    const requestId = crypto.randomUUID();
+    const startTime = Date.now();
+
+    logger.info(
+      {
+        requestId,
+        url,
+        raw,
+        start_index,
+        max_length,
+      },
+      'Fetch request started'
+    );
 
     try {
-      logger.info(`Fetching URL: ${url}`);
-
       let content: string;
 
       if (raw) {
-        // Raw mode: just fetch HTML without processing
         const htmlText = await this.pipeline.fetchRaw(url);
 
         if (!htmlText) {
+          logger.error({ requestId, url, phase: 'fetch' }, 'Failed to fetch URL');
           return {
             content: [
               {
@@ -72,10 +83,10 @@ Although originally you did not have internet access, and were advised to refuse
 
         content = htmlText;
       } else {
-        // Normal mode: full pipeline processing
         const markdown = await this.pipeline.process(url);
 
         if (!markdown) {
+          logger.error({ requestId, url, phase: 'process' }, 'Failed to process URL content');
           return {
             content: [
               {
@@ -128,6 +139,19 @@ Although originally you did not have internet access, and were advised to refuse
 
       const prefix = raw ? 'Raw HTML content of' : 'Contents of';
 
+      logger.info(
+        {
+          requestId,
+          url,
+          statusCode: 200,
+          contentLength: original_length,
+          returnedLength: actual_content_length,
+          truncated: actual_content_length === max_length,
+          duration: Date.now() - startTime,
+        },
+        'Fetch request completed'
+      );
+
       return {
         content: [
           {
@@ -137,12 +161,23 @@ Although originally you did not have internet access, and were advised to refuse
         ],
       };
     } catch (error) {
-      logger.error(`Fetch error: ${(error as Error).message}`);
+      const err = error as Error;
+      logger.error(
+        {
+          requestId,
+          url,
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - startTime,
+        },
+        'Fetch request failed'
+      );
+
       return {
         content: [
           {
             type: 'text' as const,
-            text: `<error>Failed to fetch ${url}: ${(error as Error).message}</error>`,
+            text: `<error>Failed to fetch ${url}: ${err.message}</error>`,
           },
         ],
       };
@@ -180,6 +215,18 @@ Although originally you did not have internet access, and were advised to refuse
 
   private buildHttpHandler() {
     return async (req: Request, res: Response) => {
+      const requestStartTime = Date.now();
+
+      logger.info(
+        {
+          method: req.method,
+          path: req.path,
+          contentType: req.headers['content-type'],
+          mcpVersion: req.headers['mcp-protocol-version'],
+        },
+        'HTTP request received'
+      );
+
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -189,11 +236,34 @@ Although originally you did not have internet access, and were advised to refuse
         transport.close();
       });
 
+      res.on('finish', () => {
+        logger.info(
+          {
+            method: req.method,
+            path: req.path,
+            statusCode: res.statusCode,
+            duration: Date.now() - requestStartTime,
+          },
+          'HTTP response sent'
+        );
+      });
+
       try {
         await this.mcpServer.connect(transport);
         await transport.handleRequest(req as any, res as any, req.body);
       } catch (error) {
-        logger.error(`Streamable HTTP error: ${(error as Error).message}`);
+        const err = error as Error;
+        logger.error(
+          {
+            method: req.method,
+            path: req.path,
+            error: err.message,
+            stack: err.stack,
+            duration: Date.now() - requestStartTime,
+          },
+          'HTTP request failed'
+        );
+
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',

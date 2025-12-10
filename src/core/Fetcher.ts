@@ -8,9 +8,14 @@ interface Fetcher {
 }
 
 export class SimpleFetcher implements Fetcher {
-  constructor(private readonly userAgent?: string, private readonly dispatcher?: Dispatcher) {}
+  constructor(
+    private readonly userAgent?: string,
+    private readonly dispatcher?: Dispatcher
+  ) {}
 
   async fetch(url: string, options?: FetchOptions) {
+    const startTime = Date.now();
+
     try {
       const headers = new Headers(options?.headers ?? {});
       if (this.userAgent && !headers.has('user-agent')) {
@@ -18,7 +23,7 @@ export class SimpleFetcher implements Fetcher {
       }
 
       const dispatcher = options?.dispatcher ?? this.dispatcher;
-      const signal = options?.signal ?? AbortSignal.timeout(30000); // 30 second timeout
+      const signal = options?.signal ?? AbortSignal.timeout(30000);
 
       const response = await fetch(url, {
         ...options,
@@ -28,13 +33,41 @@ export class SimpleFetcher implements Fetcher {
       });
 
       if (!response.ok) {
+        logger.error(
+          {
+            url,
+            statusCode: response.status,
+            statusText: response.statusText,
+            duration: Date.now() - startTime,
+          },
+          'HTTP fetch failed'
+        );
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const html = await response.text();
+
+      logger.debug(
+        {
+          url,
+          statusCode: response.status,
+          contentLength: html.length,
+          duration: Date.now() - startTime,
+        },
+        'HTTP fetch completed'
+      );
+
       return html;
     } catch (error) {
-      logger.error(`Fetch error: ${(error as Error).message}`);
+      const err = error as Error;
+      logger.error(
+        {
+          url,
+          error: err.message,
+          duration: Date.now() - startTime,
+        },
+        'Fetch error'
+      );
       throw error;
     }
   }

@@ -7,7 +7,11 @@ import { homedir } from 'node:os';
 const appName = 'fetchraining';
 const homeDir = process.env.HOME ?? homedir();
 const xdgStateHome = process.env.XDG_STATE_HOME ?? (homeDir ? join(homeDir, '.local', 'state') : undefined);
-const preferredLogDir = xdgStateHome ? join(xdgStateHome, appName, 'logs') : homeDir ? join(homeDir, '.local', 'state', appName, 'logs') : './logs';
+const preferredLogDir = xdgStateHome
+  ? join(xdgStateHome, appName, 'logs')
+  : homeDir
+    ? join(homeDir, '.local', 'state', appName, 'logs')
+    : './logs';
 let logDir = preferredLogDir;
 
 try {
