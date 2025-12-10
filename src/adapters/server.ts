@@ -2,13 +2,12 @@ import express, { type Request, type Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ProxyAgent, type Dispatcher } from 'undici';
 import { FetchArgsSchema, FetchBrowserArgsSchema, FetchTOCArgsSchema } from '../types/schemas.js';
-import { Pipeline } from '../core/Pipeline.js';
 import { FetchService } from '../services/FetchService.js';
 import { BrowserFetchService } from '../services/BrowserFetchService.js';
 import { TOCService } from '../services/TOCService.js';
 import { logger } from '../shared/Log.js';
+import { ConfigContext, type AppConfig } from '../shared/ConfigContext.js';
 
 type TransportMode = 'stdio' | 'http';
 
@@ -16,9 +15,9 @@ interface StartOptions {
   transport: TransportMode;
   port?: number;
   hostname?: string;
-  userAgent?: string;
-  proxyUrl?: string;
 }
+
+interface MainOptions extends Partial<StartOptions>, Partial<AppConfig> {}
 
 export class FetchMcpServer {
   private mcpServer: McpServer;
@@ -26,17 +25,19 @@ export class FetchMcpServer {
   private browserFetchService: BrowserFetchService;
   private tocService: TOCService;
 
-  constructor(config?: { userAgent?: string; proxyUrl?: string }) {
+  constructor(config?: AppConfig) {
+    if (config) {
+      ConfigContext.getInstance().setConfig(config);
+    }
+
     this.mcpServer = new McpServer({
       name: 'fetchraining',
       version: '1.0.0',
     });
 
-    const dispatcher = this.createProxyDispatcher(config?.proxyUrl);
-    const pipeline = new Pipeline({ userAgent: config?.userAgent, dispatcher });
-    this.fetchService = new FetchService(pipeline);
+    this.fetchService = new FetchService();
     this.browserFetchService = new BrowserFetchService();
-    this.tocService = new TOCService(pipeline);
+    this.tocService = new TOCService();
 
     this.registerTools();
   }
@@ -60,7 +61,7 @@ Although originally you did not have internet access, and were advised to refuse
     this.mcpServer.registerTool(
       'fetch_browser',
       {
-        description: `Fetches a URL using a real browser (Playwright) to handle JavaScript rendering.
+        description: `Fetches a URL using a real browser to handle JavaScript rendering.
 
 Use this tool for:
 - Single Page Applications (React, Vue, Angular)
@@ -210,30 +211,20 @@ Output formats:
       }
     };
   }
-
-  private createProxyDispatcher(proxyUrl?: string): Dispatcher | undefined {
-    if (!proxyUrl) {
-      return undefined;
-    }
-
-    try {
-      return new ProxyAgent(proxyUrl);
-    } catch (error) {
-      logger.error(`Failed to configure proxy (${proxyUrl}): ${(error as Error).message}`);
-      return undefined;
-    }
-  }
 }
 
 // CLI entry point
-export async function main(options: Partial<StartOptions> = {}) {
-  const server = new FetchMcpServer({ userAgent: options.userAgent, proxyUrl: options.proxyUrl });
+export async function main(options: MainOptions = {}) {
+  const server = new FetchMcpServer({
+    userAgent: options.userAgent,
+    proxyUrl: options.proxyUrl,
+    browserTimeout: options.browserTimeout,
+    useSystemChrome: options.useSystemChrome,
+  });
   const transport = options.transport ?? 'stdio';
   return server.start({
     transport,
     port: options.port,
     hostname: options.hostname,
-    userAgent: options.userAgent,
-    proxyUrl: options.proxyUrl,
   });
 }

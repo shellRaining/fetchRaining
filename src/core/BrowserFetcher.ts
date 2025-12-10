@@ -1,4 +1,5 @@
-import { chromium, Browser, Page } from 'playwright';
+import { chromium } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { logger } from '../shared/Log';
 import { existsSync } from 'fs';
 
@@ -125,8 +126,12 @@ export class BrowserFetcher {
       logger.info({ url }, 'Navigating to URL');
       await page.goto(url, {
         timeout: this.timeout,
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
       });
+
+      // 等待页面主要内容加载（对 SPA 更友好）
+      await page.waitForLoadState('load', { timeout: this.timeout }).catch(() => {});
+      await page.waitForTimeout(1000);
 
       // 处理锚点（hash fragment）
       const urlObj = new URL(url);

@@ -1,114 +1,49 @@
 import { BrowserFetcher } from '../core/BrowserFetcher.js';
-import { BrowserPipeline } from '../core/BrowserPipeline.js';
+import { Pipeline } from '../core/Pipeline.js';
 import { ResponseFormatter, type MCPResponse } from '../core/ResponseFormatter.js';
 import { type FetchBrowserArgs } from '../types/schemas.js';
 import { logger } from '../shared/Log.js';
+import { ConfigContext } from '../shared/ConfigContext.js';
 
 export class BrowserFetchService {
-  private formatter: ResponseFormatter;
-  private pipeline: BrowserPipeline;
-
-  constructor() {
-    this.formatter = new ResponseFormatter();
-    this.pipeline = new BrowserPipeline();
-  }
+  private pipeline = Pipeline.getInstance();
+  private formatter = new ResponseFormatter();
 
   async fetch(args: FetchBrowserArgs): Promise<MCPResponse> {
     const { url, max_length, start_index, raw, timeout, useSystemChrome } = args;
     const requestId = crypto.randomUUID();
     const startTime = Date.now();
+    const ctx = { url, toolName: 'fetch_browser' as const, requestId };
+    const formatCtx = { ...ctx, start_index, max_length, raw };
 
-    logger.info(
-      {
-        requestId,
-        url,
-        raw,
-        timeout,
-        useSystemChrome,
-      },
-      'Browser fetch request started'
-    );
+    logger.info({ requestId, url, raw, timeout, useSystemChrome }, 'Browser fetch request started');
 
     try {
-      // 创建 BrowserFetcher
-      const browserFetcher = new BrowserFetcher({ timeout, useSystemChrome });
+      const config = ConfigContext.getInstance().getConfig();
+      const browserFetcher = new BrowserFetcher({
+        timeout: timeout ?? config.browserTimeout,
+        useSystemChrome: useSystemChrome ?? config.useSystemChrome,
+      });
 
-      let content: string;
-
-      if (raw) {
-        // 直接返回渲染后的 HTML
-        const htmlText = await browserFetcher.fetch(url);
-
-        if (!htmlText) {
-          return this.formatter.formatPhaseError('fetch', {
-            url,
-            toolName: 'fetch_browser',
-            requestId,
-          });
-        }
-
-        content = htmlText;
-      } else {
-        // 使用浏览器获取 HTML，然后处理
-        const htmlText = await browserFetcher.fetch(url);
-
-        if (!htmlText) {
-          return this.formatter.formatPhaseError('fetch', {
-            url,
-            toolName: 'fetch_browser',
-            requestId,
-          });
-        }
-
-        // 使用 BrowserPipeline 处理 HTML
-        const markdown = await this.pipeline.process(url, htmlText);
-
-        if (!markdown) {
-          return this.formatter.formatPhaseError('process', {
-            url,
-            toolName: 'fetch_browser',
-            requestId,
-          });
-        }
-
-        content = markdown;
+      const htmlText = await browserFetcher.fetch(url);
+      if (!htmlText) {
+        return this.formatter.formatPhaseError('fetch', ctx);
       }
 
-      logger.info(
-        {
-          requestId,
-          url,
-          duration: Date.now() - startTime,
-        },
-        'Browser fetch request completed'
-      );
+      const content = raw ? htmlText : await this.pipeline.processToMarkdown(url, htmlText);
+      if (!content) {
+        return this.formatter.formatPhaseError('process', ctx);
+      }
 
-      return this.formatter.formatContent(content, {
-        url,
-        start_index,
-        max_length,
-        raw,
-        toolName: 'fetch_browser',
-        requestId,
-      });
+      logger.info({ requestId, url, duration: Date.now() - startTime }, 'Browser fetch request completed');
+      return this.formatter.formatContent(content, formatCtx);
     } catch (error) {
       const err = error as Error;
       logger.error(
-        {
-          requestId,
-          url,
-          error: err.message,
-          stack: err.stack,
-          duration: Date.now() - startTime,
-        },
+        { requestId, url, error: err.message, stack: err.stack, duration: Date.now() - startTime },
         'Browser fetch request failed'
       );
-
-      return this.formatter.formatError(err, {
-        url,
-        toolName: 'fetch_browser',
-        requestId,
-      });
+      return this.formatter.formatError(err, ctx);
     }
   }
 }

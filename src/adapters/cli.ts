@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 
 import { Command } from 'commander';
-import { ProxyAgent, type Dispatcher } from 'undici';
-import { Pipeline } from '../core/Pipeline.js';
 import { FetchService } from '../services/FetchService.js';
 import { BrowserFetchService } from '../services/BrowserFetchService.js';
 import { TOCService } from '../services/TOCService.js';
 import { logger } from '../shared/Log.js';
+import { ConfigContext } from '../shared/ConfigContext.js';
 
 // 禁用日志输出到 stdout，避免干扰 CLI 输出
 process.env.LOG_TO_STDOUT = '0';
@@ -21,17 +20,6 @@ const program = new Command();
 
 program.name('fetchraining').description('网页抓取和内容提取 CLI 工具').version('1.0.0');
 
-// 创建 proxy dispatcher
-const createProxyDispatcher = (proxyUrl?: string): Dispatcher | undefined => {
-  if (!proxyUrl) return undefined;
-  try {
-    return new ProxyAgent(proxyUrl);
-  } catch (error) {
-    console.error(`代理配置失败 (${proxyUrl}): ${(error as Error).message}`);
-    return undefined;
-  }
-};
-
 // fetch 命令
 program
   .command('fetch')
@@ -45,11 +33,15 @@ program
   .option('--json', '以 JSON 格式输出结果（包含元数据）', false)
   .action(async (url: string, options) => {
     try {
+      // 设置全局配置
+      ConfigContext.getInstance().setConfig({
+        userAgent: options.userAgent,
+        proxyUrl: options.proxyUrl,
+      });
+
       const maxLength = parseInt(options.maxLength, 10);
       const startIndex = parseInt(options.startIndex, 10);
-      const dispatcher = createProxyDispatcher(options.proxyUrl);
-      const pipeline = new Pipeline({ userAgent: options.userAgent, dispatcher });
-      const fetchService = new FetchService(pipeline);
+      const fetchService = new FetchService();
 
       const result = await fetchService.fetch({
         url,
@@ -91,6 +83,12 @@ program
   .option('--json', '以 JSON 格式输出结果（包含元数据）', false)
   .action(async (url: string, options) => {
     try {
+      // 设置全局配置（浏览器相关）
+      ConfigContext.getInstance().setConfig({
+        browserTimeout: parseInt(options.timeout, 10),
+        useSystemChrome: options.systemChrome,
+      });
+
       const maxLength = parseInt(options.maxLength, 10);
       const startIndex = parseInt(options.startIndex, 10);
       const timeout = parseInt(options.timeout, 10);
@@ -137,10 +135,15 @@ program
   .option('--json-output', '以完整 JSON 格式输出结果（包含元数据）', false)
   .action(async (url: string, options) => {
     try {
+      // 设置全局配置
+      ConfigContext.getInstance().setConfig({
+        userAgent: options.userAgent,
+        proxyUrl: options.proxyUrl,
+        browserTimeout: parseInt(options.timeout, 10),
+      });
+
       const timeout = parseInt(options.timeout, 10);
-      const dispatcher = createProxyDispatcher(options.proxyUrl);
-      const pipeline = new Pipeline({ userAgent: options.userAgent, dispatcher });
-      const tocService = new TOCService(pipeline);
+      const tocService = new TOCService();
 
       const result = await tocService.extractTOC({
         url,
