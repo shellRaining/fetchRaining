@@ -1,10 +1,14 @@
 {
   "name": "fetchraining",
   "module": "index.ts",
+  "bin": {
+    "fetchraining": "./src/adapters/cli.ts"
+  },
   "scripts": {
     "fmt": "oxfmt",
     "lint": "oxlint",
-    "start": "bun run src/adapters/cli.ts"
+    "start": "bun run src/adapters/index.ts",
+    "cli": "bun run src/adapters/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

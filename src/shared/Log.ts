@@ -28,7 +28,7 @@ const streams: pino.StreamEntry[] = [
   {
     stream: pino.destination({
       dest: join(logDir, 'app.jsonl'),
-      sync: false,
+      sync: true, // 使用同步模式，避免在快速退出时出现问题
     }),
   },
 ];
