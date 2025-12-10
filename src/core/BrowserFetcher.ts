@@ -15,7 +15,7 @@ export class BrowserFetcher {
 
   constructor(options: BrowserLaunchOptions = {}) {
     this.timeout = options.timeout ?? 30000;
-    this.useSystemChrome = options.useSystemChrome ?? true;  // 默认优先使用系统 Chrome
+    this.useSystemChrome = options.useSystemChrome ?? true; // 默认优先使用系统 Chrome
     this.executablePath = options.executablePath;
   }
 
@@ -51,11 +51,7 @@ export class BrowserFetcher {
    * 启动浏览器（智能选择）
    */
   private async launchBrowser(): Promise<Browser> {
-    const launchArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-    ];
+    const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
 
     // 策略 1: 用户指定了浏览器路径
     if (this.executablePath) {
@@ -105,10 +101,8 @@ export class BrowserFetcher {
       });
     } catch (error) {
       const err = error as Error;
-      if (err.message.includes('Executable doesn\'t exist') || err.message.includes('browserType.launch')) {
-        throw new Error(
-          'Playwright browsers not installed. Please run: bunx playwright install chromium'
-        );
+      if (err.message.includes("Executable doesn't exist") || err.message.includes('browserType.launch')) {
+        throw new Error('Playwright browsers not installed. Please run: bunx playwright install chromium');
       }
       throw error;
     }
@@ -139,14 +133,15 @@ export class BrowserFetcher {
       if (urlObj.hash) {
         const hash = urlObj.hash.slice(1); // 移除 # 符号
         logger.info({ url, hash }, 'Processing URL fragment');
-        
+
         try {
           // 尝试滚动到锚点元素
           await page.evaluate((elementId) => {
-            const element = document.getElementById(elementId) || 
-                          document.querySelector(`[name="${elementId}"]`) ||
-                          document.querySelector(`a[name="${elementId}"]`);
-            
+            const element =
+              document.getElementById(elementId) ||
+              document.querySelector(`[name="${elementId}"]`) ||
+              document.querySelector(`a[name="${elementId}"]`);
+
             if (element) {
               element.scrollIntoView({ behavior: 'smooth', block: 'start' });
               return true;
