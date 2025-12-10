@@ -5,9 +5,11 @@ import { ResponseFormatter, type MCPResponse } from '../core/ResponseFormatter.j
 import { type FetchTOCArgs } from '../types/schemas.js';
 import { logger } from '../shared/Log.js';
 import { ConfigContext } from '../shared/ConfigContext.js';
+import { Cache } from '../shared/Cache.js';
 
 export class TOCService {
   private pipeline = Pipeline.getInstance();
+  private cache = Cache.getInstance();
   private fetcher: SimpleFetcher;
   private formatter = new ResponseFormatter();
 
@@ -21,22 +23,27 @@ export class TOCService {
     const { url, format, use_browser, timeout } = args;
     const requestId = crypto.randomUUID();
     const startTime = Date.now();
+    const cacheType = use_browser ? 'browser' : 'http';
     logger.info({ requestId, url, format, use_browser }, 'TOC extraction request started');
 
     try {
-      let html: string | undefined;
-
-      if (use_browser) {
-        logger.info({ requestId, url }, 'Using browser to fetch TOC');
-        const browserFetcher = new BrowserFetcher({ timeout });
-        html = await browserFetcher.fetch(url);
-      } else {
-        logger.info({ requestId, url }, 'Using HTTP fetch to extract TOC');
-        html = await this.fetcher.fetch(url);
-      }
+      // 尝试从缓存获取
+      let html: string | undefined | null = this.cache.get(url, cacheType);
 
       if (!html) {
-        return this.formatter.formatPhaseError('fetch', { url, toolName: 'fetch_toc', requestId });
+        if (use_browser) {
+          logger.info({ requestId, url }, 'Using browser to fetch TOC');
+          const browserFetcher = new BrowserFetcher({ timeout });
+          html = await browserFetcher.fetch(url);
+        } else {
+          logger.info({ requestId, url }, 'Using HTTP fetch to extract TOC');
+          html = await this.fetcher.fetch(url);
+        }
+
+        if (!html) {
+          return this.formatter.formatPhaseError('fetch', { url, toolName: 'fetch_toc', requestId });
+        }
+        this.cache.set(url, cacheType, html);
       }
 
       const content = await this.pipeline.extractTOC(url, html, format);

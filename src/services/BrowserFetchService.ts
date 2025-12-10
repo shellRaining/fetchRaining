@@ -4,9 +4,11 @@ import { ResponseFormatter, type MCPResponse } from '../core/ResponseFormatter.j
 import { type FetchBrowserArgs } from '../types/schemas.js';
 import { logger } from '../shared/Log.js';
 import { ConfigContext } from '../shared/ConfigContext.js';
+import { Cache } from '../shared/Cache.js';
 
 export class BrowserFetchService {
   private pipeline = Pipeline.getInstance();
+  private cache = Cache.getInstance();
   private formatter = new ResponseFormatter();
 
   async fetch(args: FetchBrowserArgs): Promise<MCPResponse> {
@@ -19,15 +21,20 @@ export class BrowserFetchService {
     logger.info({ requestId, url, raw, timeout, useSystemChrome }, 'Browser fetch request started');
 
     try {
-      const config = ConfigContext.getInstance().getConfig();
-      const browserFetcher = new BrowserFetcher({
-        timeout: timeout ?? config.browserTimeout,
-        useSystemChrome: useSystemChrome ?? config.useSystemChrome,
-      });
-
-      const htmlText = await browserFetcher.fetch(url);
+      // 尝试从缓存获取
+      let htmlText = this.cache.get(url, 'browser');
       if (!htmlText) {
-        return this.formatter.formatPhaseError('fetch', ctx);
+        const config = ConfigContext.getInstance().getConfig();
+        const browserFetcher = new BrowserFetcher({
+          timeout: timeout ?? config.browserTimeout,
+          useSystemChrome: useSystemChrome ?? config.useSystemChrome,
+        });
+
+        htmlText = await browserFetcher.fetch(url);
+        if (!htmlText) {
+          return this.formatter.formatPhaseError('fetch', ctx);
+        }
+        this.cache.set(url, 'browser', htmlText);
       }
 
       const content = raw ? htmlText : await this.pipeline.processToMarkdown(url, htmlText);

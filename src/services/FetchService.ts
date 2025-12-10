@@ -4,9 +4,11 @@ import { ResponseFormatter, type MCPResponse } from '../core/ResponseFormatter.j
 import { type FetchArgs } from '../types/schemas.js';
 import { logger } from '../shared/Log.js';
 import { ConfigContext } from '../shared/ConfigContext.js';
+import { Cache } from '../shared/Cache.js';
 
 export class FetchService {
   private pipeline = Pipeline.getInstance();
+  private cache = Cache.getInstance();
   private fetcher: SimpleFetcher;
   private formatter = new ResponseFormatter();
 
@@ -26,9 +28,14 @@ export class FetchService {
     logger.info({ requestId, url, raw, start_index, max_length }, 'Fetch request started');
 
     try {
-      const htmlText = await this.fetcher.fetch(url);
+      // 尝试从缓存获取
+      let htmlText = this.cache.get(url, 'http');
       if (!htmlText) {
-        return this.formatter.formatPhaseError('fetch', ctx);
+        htmlText = await this.fetcher.fetch(url);
+        if (!htmlText) {
+          return this.formatter.formatPhaseError('fetch', ctx);
+        }
+        this.cache.set(url, 'http', htmlText);
       }
 
       const content = raw ? htmlText : await this.pipeline.processToMarkdown(url, htmlText);
