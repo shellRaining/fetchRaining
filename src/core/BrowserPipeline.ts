@@ -2,6 +2,7 @@ import { DocumentBuilder } from './Builder.js';
 import { ArticleExtracter } from './Extracter.js';
 import { FragmentExtractor } from './FragmentExtractor.js';
 import { MarkdownTransformer } from './Transformer.js';
+import { TOCExtractor } from './TOCExtractor.js';
 import { logger } from '../shared/Log.js';
 
 export class BrowserPipeline {
@@ -9,12 +10,14 @@ export class BrowserPipeline {
   private extracter: ArticleExtracter;
   private fragmentExtracter: FragmentExtractor;
   private transformer: MarkdownTransformer;
+  private tocExtractor: TOCExtractor;
 
   constructor() {
     this.builder = new DocumentBuilder();
     this.extracter = new ArticleExtracter();
     this.fragmentExtracter = new FragmentExtractor();
     this.transformer = new MarkdownTransformer();
+    this.tocExtractor = new TOCExtractor();
   }
 
   /**
@@ -75,6 +78,52 @@ export class BrowserPipeline {
           duration: Date.now() - startTime,
         },
         'Browser pipeline processing error'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * 从浏览器渲染的 HTML 中提取目录
+   */
+  async extractTOC(url: string, html: string, format: 'markdown' | 'json' = 'markdown'): Promise<string | null> {
+    const startTime = Date.now();
+
+    try {
+      // 构建 DOM 文档
+      const document = this.builder.extract(html);
+      if (!document) {
+        logger.warn({ url, phase: 'build' }, 'Failed to build document');
+        return null;
+      }
+
+      // 提取目录
+      const tocItems = this.tocExtractor.extract(document, url);
+
+      logger.debug(
+        {
+          url,
+          tocItemsCount: tocItems.length,
+          duration: Date.now() - startTime,
+        },
+        'Browser TOC extraction completed'
+      );
+
+      if (format === 'json') {
+        return this.tocExtractor.formatAsJSON(tocItems);
+      }
+
+      return this.tocExtractor.formatAsMarkdown(tocItems);
+    } catch (error) {
+      const err = error as Error;
+      logger.error(
+        {
+          url,
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - startTime,
+        },
+        'Browser TOC extraction error'
       );
       throw error;
     }

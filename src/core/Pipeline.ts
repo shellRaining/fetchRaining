@@ -3,6 +3,7 @@ import { DocumentBuilder } from './Builder';
 import { ArticleExtracter } from './Extracter';
 import { FragmentExtractor } from './FragmentExtractor';
 import { MarkdownTransformer } from './Transformer';
+import { TOCExtractor } from './TOCExtractor';
 import { logger } from '../shared/Log';
 import type { Dispatcher } from 'undici';
 
@@ -12,6 +13,7 @@ export class Pipeline {
   private extracter: ArticleExtracter;
   private fragmentExtracter: FragmentExtractor;
   private transformer: MarkdownTransformer;
+  private tocExtractor: TOCExtractor;
 
   constructor(options?: { userAgent?: string; dispatcher?: Dispatcher }) {
     this.fetcher = new SimpleFetcher(options?.userAgent, options?.dispatcher);
@@ -19,6 +21,7 @@ export class Pipeline {
     this.extracter = new ArticleExtracter();
     this.fragmentExtracter = new FragmentExtractor();
     this.transformer = new MarkdownTransformer();
+    this.tocExtractor = new TOCExtractor();
   }
 
   async fetchRaw(url: string, options?: RequestInit) {
@@ -82,6 +85,54 @@ export class Pipeline {
           duration: Date.now() - startTime,
         },
         'Pipeline processing error'
+      );
+      throw error;
+    }
+  }
+
+  async extractTOC(url: string, format: 'markdown' | 'json' = 'markdown') {
+    const startTime = Date.now();
+
+    try {
+      const htmlText = await this.fetcher.fetch(url);
+
+      if (!htmlText) {
+        logger.warn({ url, phase: 'fetch' }, 'No data fetched from URL');
+        return null;
+      }
+
+      const document = this.builder.extract(htmlText);
+      if (!document) {
+        logger.warn({ url, phase: 'build' }, 'Failed to build document');
+        return null;
+      }
+
+      const tocItems = this.tocExtractor.extract(document, url);
+
+      logger.debug(
+        {
+          url,
+          tocItemsCount: tocItems.length,
+          duration: Date.now() - startTime,
+        },
+        'TOC extraction completed'
+      );
+
+      if (format === 'json') {
+        return this.tocExtractor.formatAsJSON(tocItems);
+      }
+
+      return this.tocExtractor.formatAsMarkdown(tocItems);
+    } catch (error) {
+      const err = error as Error;
+      logger.error(
+        {
+          url,
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - startTime,
+        },
+        'TOC extraction error'
       );
       throw error;
     }

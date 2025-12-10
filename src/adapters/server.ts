@@ -3,10 +3,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ProxyAgent, type Dispatcher } from 'undici';
-import { FetchArgsSchema, FetchBrowserArgsSchema } from '../types/schemas.js';
+import { FetchArgsSchema, FetchBrowserArgsSchema, FetchTOCArgsSchema } from '../types/schemas.js';
 import { Pipeline } from '../core/Pipeline.js';
 import { FetchService } from '../services/FetchService.js';
 import { BrowserFetchService } from '../services/BrowserFetchService.js';
+import { TOCService } from '../services/TOCService.js';
 import { logger } from '../shared/Log.js';
 
 type TransportMode = 'stdio' | 'http';
@@ -23,6 +24,7 @@ export class FetchMcpServer {
   private mcpServer: McpServer;
   private fetchService: FetchService;
   private browserFetchService: BrowserFetchService;
+  private tocService: TOCService;
 
   constructor(config?: { userAgent?: string; proxyUrl?: string }) {
     this.mcpServer = new McpServer({
@@ -34,6 +36,7 @@ export class FetchMcpServer {
     const pipeline = new Pipeline({ userAgent: config?.userAgent, dispatcher });
     this.fetchService = new FetchService(pipeline);
     this.browserFetchService = new BrowserFetchService();
+    this.tocService = new TOCService(pipeline);
 
     this.registerTools();
   }
@@ -71,6 +74,43 @@ For static pages, use the 'fetch' tool instead.`,
       },
       async (args) => {
         return this.browserFetchService.fetch(args);
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'fetch_toc',
+      {
+        description: `Extracts the table of contents (TOC) from a web page by parsing all headings (h1-h6).
+
+This tool is useful when:
+- You need to understand the structure of a long page before reading it
+- The page content is too large and gets truncated
+- You want to navigate to specific sections using anchors (e.g., url#section-id)
+- You need an overview of what topics a page covers
+
+The tool returns:
+- All headings with their hierarchy levels (h1-h6)
+- Anchor IDs for each heading (if available)
+- Full URLs with anchors that can be used with the 'fetch' tool
+
+Fetching modes:
+- HTTP fetch (default): Fast, suitable for static pages and SSR pages where headings are in initial HTML
+- Browser mode (use_browser=true): Uses Playwright to render JavaScript, necessary for SPAs and dynamically rendered pages
+
+Note: If the page uses client-side rendering for headings (React, Vue, etc.), set use_browser=true
+
+Example workflow:
+1. Use 'fetch_toc' to get the page structure (try HTTP first, use browser mode if needed)
+2. Identify interesting sections from the TOC
+3. Use 'fetch' or 'fetch_browser' with anchor URLs (e.g., https://example.com#section-id) to read specific sections
+
+Output formats:
+- "markdown": Human-readable hierarchical list (default)
+- "json": Structured data with level, text, id, and href for each heading`,
+        inputSchema: FetchTOCArgsSchema,
+      },
+      async (args) => {
+        return this.tocService.extractTOC(args);
       }
     );
   }

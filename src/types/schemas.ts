@@ -41,3 +41,25 @@ export const FetchBrowserArgsSchema = z.object({
 });
 
 export type FetchBrowserArgs = z.infer<typeof FetchBrowserArgsSchema>;
+
+export const FetchTOCArgsSchema = z.object({
+  url: z.string().describe('URL to fetch and extract table of contents from'),
+  format: z
+    .enum(['markdown', 'json'])
+    .default('markdown')
+    .describe('Output format: "markdown" for human-readable format, "json" for structured data'),
+  use_browser: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Use browser (Playwright) to render JavaScript before extracting TOC. Use for SPAs and dynamically rendered pages.'
+    ),
+  timeout: z
+    .number()
+    .int()
+    .positive()
+    .default(30000)
+    .describe('Browser page load timeout in milliseconds (only used when use_browser is true)'),
+});
+
+export type FetchTOCArgs = z.infer<typeof FetchTOCArgsSchema>;
