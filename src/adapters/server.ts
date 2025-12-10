@@ -3,8 +3,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ProxyAgent, type Dispatcher } from 'undici';
-import { FetchArgsSchema, type FetchArgs } from '../types/schemas.js';
+import { FetchArgsSchema, type FetchArgs, FetchBrowserArgsSchema, type FetchBrowserArgs } from '../types/schemas.js';
 import { Pipeline } from '../core/Pipeline.js';
+import { BrowserFetcher } from '../core/BrowserFetcher.js';
+import { DocumentBuilder } from '../core/Builder.js';
+import { ArticleExtracter } from '../core/Extracter.js';
+import { MarkdownTransformer } from '../core/Transformer.js';
+import { FragmentExtractor } from '../core/FragmentExtractor.js';
 import { logger } from '../shared/Log.js';
 
 type TransportMode = 'stdio' | 'http';
@@ -38,11 +43,33 @@ export class FetchMcpServer {
       {
         description: `Fetches a URL from the internet and optionally extracts its contents as markdown.
 
+This tool uses a lightweight HTTP fetch. For JavaScript-rendered pages (SPAs, Next.js, etc.), use the 'fetch_browser' tool instead.
+
 Although originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.`,
         inputSchema: FetchArgsSchema,
       },
       async (args) => {
         return this.handleFetch(args);
+      }
+    );
+
+    this.mcpServer.registerTool(
+      'fetch_browser',
+      {
+        description: `Fetches a URL using a real browser (Playwright) to handle JavaScript rendering.
+
+Use this tool for:
+- Single Page Applications (React, Vue, Angular)
+- Next.js, Nuxt.js, Gatsby sites
+- Pages that show "Loading..." with static fetch
+- Pages requiring JavaScript execution
+
+Note: This tool has higher resource usage (~2-5 seconds, 100-200MB RAM per request).
+For static pages, use the 'fetch' tool instead.`,
+        inputSchema: FetchBrowserArgsSchema,
+      },
+      async (args) => {
+        return this.handleFetchBrowser(args);
       }
     );
   }
@@ -184,6 +211,205 @@ Although originally you did not have internet access, and were advised to refuse
     }
   }
 
+  private async handleFetchBrowser(args: FetchBrowserArgs) {
+    const { url, max_length, start_index, raw, timeout, useSystemChrome } = args;
+    const requestId = crypto.randomUUID();
+    const startTime = Date.now();
+
+    logger.info(
+      {
+        requestId,
+        url,
+        raw,
+        timeout,
+        useSystemChrome,
+      },
+      'Browser fetch request started'
+    );
+
+    try {
+      // 创建 BrowserFetcher
+      const browserFetcher = new BrowserFetcher({ timeout, useSystemChrome });
+
+      let content: string;
+
+      if (raw) {
+        // 直接返回渲染后的 HTML
+        const htmlText = await browserFetcher.fetch(url);
+
+        if (!htmlText) {
+          logger.error({ requestId, url, phase: 'fetch' }, 'Failed to fetch URL with browser');
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '<error>Failed to fetch URL with browser</error>',
+              },
+            ],
+          };
+        }
+
+        content = htmlText;
+      } else {
+        // 使用浏览器获取 HTML，然后复用现有的处理流程
+        const htmlText = await browserFetcher.fetch(url);
+
+        if (!htmlText) {
+          logger.error({ requestId, url, phase: 'fetch' }, 'Failed to fetch URL with browser');
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '<error>Failed to fetch URL with browser</error>',
+              },
+            ],
+          };
+        }
+
+        // 复用现有的处理组件
+        const builder = new DocumentBuilder();
+        const document = builder.extract(htmlText);
+
+        if (!document) {
+          logger.error({ requestId, url, phase: 'build' }, 'Failed to build document');
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '<error>Failed to process browser content</error>',
+              },
+            ],
+          };
+        }
+
+        // 处理锚点片段提取
+        const fragment = this.extractFragment(url);
+        if (fragment) {
+          const fragmentExtractor = new FragmentExtractor();
+          const fragmentHtml = fragmentExtractor.extract(document, fragment);
+          if (fragmentHtml) {
+            document.body.innerHTML = fragmentHtml;
+            logger.info({ requestId, url, fragment }, 'Fragment extracted successfully');
+          }
+        }
+
+        const extracter = new ArticleExtracter();
+        const article = extracter.extract(document);
+
+        if (!article || !article.content) {
+          logger.error({ requestId, url, phase: 'extract' }, 'No article content extracted');
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '<error>Failed to extract content from page</error>',
+              },
+            ],
+          };
+        }
+
+        const transformer = new MarkdownTransformer();
+        const markdown = transformer.transform(article.content);
+
+        if (!markdown) {
+          logger.error({ requestId, url, phase: 'transform' }, 'Failed to transform to markdown');
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '<error>Failed to transform content to markdown</error>',
+              },
+            ],
+          };
+        }
+
+        content = markdown;
+      }
+
+      // Handle content truncation and pagination (same as handleFetch)
+      const original_length = content.length;
+
+      if (start_index >= original_length) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: '<error>No more content available.</error>',
+            },
+          ],
+        };
+      }
+
+      const truncated_content = content.slice(start_index, start_index + max_length);
+
+      if (!truncated_content) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: '<error>No more content available.</error>',
+            },
+          ],
+        };
+      }
+
+      let final_content = truncated_content;
+      const actual_content_length = truncated_content.length;
+      const remaining_content = original_length - (start_index + actual_content_length);
+
+      // Add continuation prompt if content was truncated
+      if (actual_content_length === max_length && remaining_content > 0) {
+        const next_start = start_index + actual_content_length;
+        final_content += `\n\n<error>Content truncated. Call fetch_browser with start_index=${next_start} to get more content.</error>`;
+      }
+
+      const prefix = raw ? 'Raw HTML content (browser-rendered) of' : 'Contents (browser-rendered) of';
+
+      logger.info(
+        {
+          requestId,
+          url,
+          statusCode: 200,
+          contentLength: original_length,
+          returnedLength: actual_content_length,
+          truncated: actual_content_length === max_length,
+          duration: Date.now() - startTime,
+        },
+        'Browser fetch request completed'
+      );
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `${prefix} ${url}:\n${final_content}`,
+          },
+        ],
+      };
+    } catch (error) {
+      const err = error as Error;
+      logger.error(
+        {
+          requestId,
+          url,
+          error: err.message,
+          stack: err.stack,
+          duration: Date.now() - startTime,
+        },
+        'Browser fetch request failed'
+      );
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `<error>Failed to fetch ${url} with browser: ${err.message}</error>`,
+          },
+        ],
+      };
+    }
+  }
+
   async start(options: StartOptions) {
     if (options.transport === 'http') {
       return this.startHttp(options);
@@ -290,6 +516,16 @@ Although originally you did not have internet access, and were advised to refuse
     } catch (error) {
       logger.error(`Failed to configure proxy (${proxyUrl}): ${(error as Error).message}`);
       return undefined;
+    }
+  }
+
+  private extractFragment(url: string): string {
+    try {
+      const parsedUrl = new URL(url);
+      return parsedUrl.hash;
+    } catch (error) {
+      logger.warn(`Failed to parse URL fragment: ${(error as Error).message}`);
+      return '';
     }
   }
 }
